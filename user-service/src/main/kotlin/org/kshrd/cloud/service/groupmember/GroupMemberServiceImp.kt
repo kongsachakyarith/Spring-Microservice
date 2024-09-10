@@ -10,7 +10,10 @@ import reactor.core.publisher.Mono
 import java.util.*
 
 @Service
-class GroupMemberServiceImp(val groupMemberRepository: GroupMemberRepository, val appUserRepository: AppUserRepository): GroupMemberService {
+class GroupMemberServiceImp(
+    val groupMemberRepository: GroupMemberRepository,
+    val appUserRepository: AppUserRepository
+) : GroupMemberService {
 
     override fun createGroupMember(memberRequest: MemberRequest): Mono<MemberDto> {
         val userId = groupMemberRepository.findUserIdById(memberRequest.userId)
