@@ -1,0 +1,32 @@
+server:
+  port: 8081
+spring:
+  zipkin:
+    base-url: http://localhost:9411
+
+  application:
+    name: user-service
+#  r2dbc:
+#    url: r2dbc:pool:postgresql://localhost:7434/user_db
+#    username: kimgech
+#    password: 123
+  main:
+    allow-bean-definition-overriding: true
+    web-application-type: reactive
+  config:
+    import: optional:configserver:http://localhost:8008/
+  profiles:
+    active: dev
+
+eureka:
+  client:
+    fetch-registry: true
+    register-with-eureka: true
+    eureka-server-u-r-l-defaultZone: http://localhost:8761/eureka/
+    instance:
+      hostname: localhost
+
+      instanceId: ${eureka.instance.hostname}:${spring.application.name}
+      statusPageUrl: http://${eureka.hostname}/
+      healthCheckUrl: http://${eureka.hostname}/actuator/health
+      secureHealthCheckUrl: http://${eureka.hostname}/actuator/health

@@ -1,0 +1,189 @@
+version: "3.8"
+
+volumes:
+  user_data:
+  task_data:
+  keycloak_data:
+  zipkin_data:
+
+networks:
+  service:
+
+x-database-env: &database-env
+  POSTGRES_DB: keycloak
+  POSTGRES_USER: keycloak
+  POSTGRES_PASSWORD: password
+
+x-keycloak-env: &keycloak-env
+  DB_VENDOR: POSTGRES
+  DB_ADDR: keycloak-database
+  DB_DATABASE: keycloak
+  DB_USER: keycloak
+  DB_SCHEMA: public
+  DB_PASSWORD: password
+  KEYCLOAK_USER: admin
+  KEYCLOAK_PASSWORD: kcpassword
+  KEYCLOAK_LOGLEVEL: DEBUG
+  ROOT_LOGLEVEL: DEBUG
+
+services:
+
+  zipkin:
+    image: openzipkin/zipkin
+    ports:
+      - "9411:9411"
+    volumes:
+      - zipkin_data:/data
+    container_name: zipkin-server
+    networks:
+      - service
+
+  keycloak-database:
+    image: postgres:14.4-alpine
+    restart: unless-stopped
+    volumes:
+      - keycloak_data:/var/lib/postgresql/data
+    container_name: keycloak-database
+    healthcheck:
+      test: [ "CMD", "pg_isready", "-U", "keycloak" ]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    environment:
+      <<: *database-env
+    ports:
+      - "2345:5432"
+    networks:
+      - service
+
+  keycloak-service:
+    image: quay.io/keycloak/keycloak:16.1.1
+    restart: unless-stopped
+    container_name: keycloak-server
+    environment:
+      <<: *keycloak-env
+    ports:
+      - "8888:8080"
+      - "8443:8443"
+    depends_on:
+      - keycloak-database
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "curl",
+          "--fail",
+          "http://localhost:8080/auth/realms/master"
+        ]
+      interval: 20s
+      timeout: 3s
+      start_period: 10s
+      retries: 3
+    networks:
+      - service
+
+  user-database:
+    image: postgres:14.4-alpine
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready", "-U", "user" ]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+    container_name: user-database
+    ports:
+      - "7434:5432"
+    environment:
+      PGDATA: /var/lib/postgresql/data
+      POSTGRES_DB: user_db
+      POSTGRES_USER: kimgech
+      POSTGRES_PASSWORD: 123
+    volumes:
+      - user_data:/var/lib/postgresql/data
+    networks:
+      - service
+
+  task-database:
+    image: postgres:14.4-alpine
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready", "-U", "task" ]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+    container_name: task-database
+    ports:
+      - "7433:5432"
+    environment:
+      PGDATA: /var/lib/postgresql/data
+      POSTGRES_DB: task_db
+      POSTGRES_USER: kimgech
+      POSTGRES_PASSWORD: 123
+    volumes:
+      - task_data:/var/lib/postgresql/data
+    networks:
+      - service
+
+  eureka-server:
+    container_name: eureka-server
+    build:
+      context: .
+      dockerfile: eureka.Dockerfile
+    ports:
+      - "8761:8761"
+    networks:
+      - service
+
+  config-server:
+    container_name: config-server
+    build:
+      context: .
+      dockerfile: configserver.Dockerfile
+    ports:
+      - "8008:8008"
+    networks:
+      - service
+
+  api-gateway:
+    container_name: api-gateway
+    build:
+      context: .
+      dockerfile: apigateway.Dockerfile
+    ports:
+      - "8080:8080"
+    networks:
+      - service
+
+  task-service:
+    build:
+      context: .
+      dockerfile: task.Dockerfile
+    container_name: task-service
+    depends_on:
+      - task-database
+    environment:
+      - SPRING_DATASOURCE_URL=r2dbc:pool:postgresql://task-database:5432/task_db
+      - SPRING_DATASOURCE_USERNAME=kimgech
+      - SPRING_DATASOURCE_PASSWORD=123
+    ports:
+      - '8082:8082'
+    networks:
+      - service
+
+  user-service:
+    build:
+      context: .
+      dockerfile: user.Dockerfile
+    container_name: user-service
+    depends_on:
+      - user-database
+    environment:
+      - SPRING_DATASOURCE_URL=r2dbc:pool:postgresql://user-database:5432/user_db
+      - SPRING_DATASOURCE_USERNAME=kimgech
+      - SPRING_DATASOURCE_PASSWORD=123
+      - SPRING_JPA_HIBERNATE_DDL_AUTO=update
+    ports:
+      - '8081:8080'
+    restart: always
+    networks:
+      - service
